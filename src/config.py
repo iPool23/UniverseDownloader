@@ -1,0 +1,27 @@
+"""Configuración de la aplicación"""
+from pathlib import Path
+import os
+
+# Directorios
+BASE_DIR = Path(__file__).parent.parent
+DOWNLOAD_FOLDER = BASE_DIR / "downloads"
+DOWNLOAD_FOLDER.mkdir(exist_ok=True)
+
+# Servidor
+HOST = "127.0.0.1"
+PORT = 8000
+
+# FFmpeg locations
+FFMPEG_LOCATIONS = [
+    r'C:\ffmpeg\bin',
+    r'C:\Program Files\ffmpeg\bin',
+    os.path.expanduser(r'~\scoop\apps\ffmpeg\current\bin'),
+    os.path.expanduser(r'~\AppData\Local\Microsoft\WinGet\Links'),
+    os.path.expanduser(r'~\AppData\Local\CapCut\Apps'),
+]
+
+# Formatos soportados
+SUPPORTED_FORMATS = ['mp3', 'mp4']
+
+# Calidad máxima de video (altura en píxeles)
+MAX_VIDEO_HEIGHT = 2160  # 4K

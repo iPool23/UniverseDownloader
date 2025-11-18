@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Downloader</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>🎥 YouTube Downloader</h1>
+        <p class="subtitle">Descarga videos en máxima calidad</p>
+        
+        <div class="input-group">
+            <label for="url">URL del Video:</label>
+            <input type="text" id="url" placeholder="https://www.youtube.com/watch?v=..." />
+        </div>
+        
+        <div class="input-group">
+            <label>Formato:</label>
+            <div class="format-buttons">
+                <button class="format-btn active" data-format="mp4">
+                    🎬 MP4 (Video)
+                </button>
+                <button class="format-btn" data-format="mp3">
+                    🎵 MP3 (Audio)
+                </button>
+            </div>
+        </div>
+        
+        <button class="download-btn" onclick="download()">
+            Descargar
+        </button>
+    </div>
+    
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <div id="modalContent"></div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
