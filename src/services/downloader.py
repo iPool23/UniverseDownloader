@@ -10,6 +10,24 @@ from src.config import DOWNLOAD_FOLDER, MAX_VIDEO_HEIGHT
 from src.utils import find_ffmpeg, sanitize_filename
 
 
+class QuietLogger:
+    def debug(self, msg):
+        pass
+
+    def warning(self, msg):
+        # Ignore common noise warnings
+        ignore_keywords = [
+            "PO Token", "SABR", "JS runtime", "missing a url", 
+            "falling back", "Unable to download webpage"
+        ]
+        if any(k in msg for k in ignore_keywords):
+            return
+        print(f"WARNING: {msg}")
+
+    def error(self, msg):
+        print(f"ERROR: {msg}")
+
+
 class DownloaderService:
     """Servicio para descargar videos de YouTube"""
     
@@ -37,7 +55,15 @@ class DownloaderService:
 
     def get_video_info(self, url: str) -> Dict:
         """Obtiene información del video sin descargar"""
-        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+        # Usamos logger silencioso y opciones por defecto
+        opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'noplaylist': True, # IMPORTANT: Prevent scanning entire playlists
+            'logger': QuietLogger(),
+            # Removed extractor_args to allow default fallback behavior
+        }
+        with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
             return {
                 'title': info.get('title'),
@@ -53,6 +79,7 @@ class DownloaderService:
             'quiet': True,
             'no_warnings': True,
             'noplaylist': True,
+            'logger': QuietLogger(),
         }
         
         if self.ffmpeg_path:
