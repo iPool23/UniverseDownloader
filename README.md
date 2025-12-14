@@ -1,12 +1,11 @@
-# 🎥 YouTube Downloader
+# 🎥 Universe Downloader
+![Universe Downloader](ImagePresentation.png)
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Aplicación web profesional para descargar videos y audio de YouTube en máxima calidad.
-
-![Screenshot](https://via.placeholder.com/800x400/667eea/ffffff?text=YouTube+Downloader)
+Aplicación web profesional para descargar videos y audio de YouTube, Facebook, Kick, Twitch y más en máxima calidad.
 
 ## ✨ Características
 
