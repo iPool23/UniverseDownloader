@@ -1,5 +1,8 @@
 fastapi==0.104.1
 uvicorn==0.24.0
 pydantic==2.5.0
-yt-dlp>=2024.04.09
-curl-cffi>=0.5.10
+yt-dlp>=2025.12.08
+curl-cffi==0.13.0
+pybalt>=2025.7.1
+pystray>=0.19.5
+Pillow>=10.0.0

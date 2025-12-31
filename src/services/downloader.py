@@ -2,6 +2,7 @@
 import yt_dlp
 import sys
 import os
+import asyncio
 import threading
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Callable
@@ -65,6 +66,76 @@ class DownloaderService:
         if self.ffmpeg_path:
             # Añadir a PATH para asegurar que yt-dlp lo encuentre
             os.environ["PATH"] += os.pathsep + self.ffmpeg_path
+    
+    def _is_tiktok_url(self, url: str) -> bool:
+        """Check if URL is a TikTok URL"""
+        return 'tiktok.com' in url or 'vm.tiktok.com' in url
+    
+    def _download_with_pybalt_sync(self, url: str, unique_id: str) -> Tuple[Path, str]:
+        """Download TikTok video using pybalt CLI (subprocess)"""
+        import subprocess
+        import glob
+        
+        download_progress[unique_id].update({
+            'status': 'downloading',
+            'percent': 50,
+            'speed': 'cobalt.tools'
+        })
+        
+        # Use pybalt CLI with output directory
+        try:
+            result = subprocess.run(
+                ['pybalt', '-u', url, '-fp', str(DOWNLOAD_FOLDER), '-y'],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                stdin=subprocess.DEVNULL
+            )
+            
+            if result.returncode != 0:
+                raise Exception(f"pybalt CLI failed: {result.stderr}")
+            
+            # Find the downloaded file (pybalt uses tiktok_username_id.mp4 format)
+            # Get the most recent .mp4 file in download folder
+            import re
+            video_id_match = re.search(r'/video/(\d+)', url)
+            video_id = video_id_match.group(1) if video_id_match else None
+            
+            if video_id:
+                # Look for file with video ID
+                pattern = str(DOWNLOAD_FOLDER / f"*{video_id}*.mp4")
+                files = glob.glob(pattern)
+                if files:
+                    downloaded_file = Path(files[0])
+                else:
+                    # Fallback: get most recent mp4
+                    mp4_files = list(DOWNLOAD_FOLDER.glob("*.mp4"))
+                    if mp4_files:
+                        downloaded_file = max(mp4_files, key=lambda p: p.stat().st_mtime)
+                    else:
+                        raise Exception("No downloaded file found")
+            else:
+                raise Exception("Could not extract video ID")
+            
+            # Rename to use unique_id
+            new_path = DOWNLOAD_FOLDER / f"{unique_id}.mp4"
+            if downloaded_file != new_path:
+                downloaded_file.rename(new_path)
+            
+            filename = f"tiktok_{unique_id}.mp4"
+            
+            download_progress[unique_id].update({
+                'status': 'completed',
+                'percent': 100,
+                'filename': filename
+            })
+            
+            return new_path, filename
+            
+        except subprocess.TimeoutExpired:
+            raise Exception("pybalt download timed out")
+        except Exception as e:
+            raise Exception(f"pybalt download failed: {str(e)}")
 
     def _parse_time(self, time_str: str) -> float:
         """Convierte string de tiempo (HH:MM:SS o MM:SS) a segundos"""
@@ -121,6 +192,11 @@ class DownloaderService:
 
     def get_video_info(self, url: str) -> Dict:
         """Obtiene información del video sin descargar"""
+        # Limpiar URL de TikTok
+        original_url = url
+        if 'tiktok.com' in url and '?' in url:
+            url = url.split('?')[0]
+
         # Usamos logger silencioso y opciones por defecto
         opts = {
             'quiet': True,
@@ -129,22 +205,61 @@ class DownloaderService:
             'logger': QuietLogger(),
             # Removed extractor_args to allow default fallback behavior
         }
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            
-            # Extraer calidades disponibles
-            qualities = self._extract_qualities(info)
-            
-            # Obtener thumbnail
-            thumbnail = self._get_thumbnail(info, url)
-            
-            return {
-                'title': info.get('title'),
-                'duration': info.get('duration'),
-                'thumbnail': thumbnail,
-                'webpage_url': info.get('webpage_url'),
-                'qualities': qualities
-            }
+        
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                
+                # Extraer calidades disponibles
+                qualities = self._extract_qualities(info)
+                
+                # Obtener thumbnail
+                thumbnail = self._get_thumbnail(info, url)
+                
+                return {
+                    'title': info.get('title'),
+                    'duration': info.get('duration'),
+                    'thumbnail': thumbnail,
+                    'webpage_url': info.get('webpage_url'),
+                    'qualities': qualities
+                }
+        except Exception as e:
+            # TikTok fallback: use oEmbed API for metadata
+            if self._is_tiktok_url(url):
+                import re
+                import requests
+                
+                # Extract video ID from URL
+                video_id_match = re.search(r'/video/(\d+)', url)
+                video_id = video_id_match.group(1) if video_id_match else 'tiktok_video'
+                
+                # Try to get metadata from TikTok oEmbed API
+                title = f'TikTok Video {video_id}'
+                thumbnail = None
+                author_name = None
+                
+                try:
+                    oembed_url = f'https://www.tiktok.com/oembed?url={url}'
+                    resp = requests.get(oembed_url, timeout=5)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        title = data.get('title', title)
+                        thumbnail = data.get('thumbnail_url')
+                        author_name = data.get('author_name')
+                        if author_name and title:
+                            title = f"{title} - {author_name}"
+                except Exception:
+                    pass  # Use default values if oEmbed fails
+                
+                return {
+                    'title': title,
+                    'duration': None,
+                    'thumbnail': thumbnail,
+                    'webpage_url': url,
+                    'qualities': [{'value': 720, 'label': '720p (HD)'}],
+                    '_tiktok_fallback': True  # Flag to indicate pybalt should be used
+                }
+            raise
     
     def _extract_qualities(self, info: Dict) -> list:
         """Extrae las calidades de video disponibles"""
@@ -201,6 +316,11 @@ class DownloaderService:
             else:
                 opts['ffmpeg_location'] = self.ffmpeg_path
         
+        # Check for cookies.txt
+        cookies_path = Path("cookies.txt")
+        if cookies_path.exists():
+            opts['cookiefile'] = str(cookies_path.absolute())
+            
         return opts
     
     def _get_audio_options(self, unique_id: str, audio_quality: Optional[int] = None) -> Dict:
@@ -258,6 +378,10 @@ class DownloaderService:
             'filename': '',
             'error': None
         }
+        
+        # Limpiar URL de TikTok
+        if 'tiktok.com' in url and '?' in url:
+            url = url.split('?')[0]
         
         def clean_ansi(text):
             """Elimina códigos de escape ANSI del texto"""
@@ -350,6 +474,25 @@ class DownloaderService:
                 
                 return file_path, filename
         except Exception as e:
+            # If TikTok and yt-dlp failed, try pybalt as fallback
+            if self._is_tiktok_url(url):
+                try:
+                    print(f"yt-dlp failed for TikTok, trying pybalt fallback...")
+                    download_progress[unique_id].update({
+                        'status': 'downloading',
+                        'percent': 25,
+                        'speed': 'Trying cobalt.tools...'
+                    })
+                    # Use sync pybalt CLI
+                    result = self._download_with_pybalt_sync(url, unique_id)
+                    return result
+                except Exception as pybalt_error:
+                    download_progress[unique_id].update({
+                        'status': 'error',
+                        'error': f"yt-dlp: {str(e)} | pybalt: {str(pybalt_error)}"
+                    })
+                    raise Exception(f"All download methods failed. yt-dlp: {str(e)} | pybalt: {str(pybalt_error)}")
+            
             download_progress[unique_id].update({
                 'status': 'error',
                 'error': str(e)
