@@ -1,21 +1,36 @@
 # 🎥 Universe Downloader
+
 ![Universe Downloader](ImagePresentation.png)
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Aplicación web profesional para descargar videos y audio de YouTube, Facebook, Kick, Twitch y más en máxima calidad.
+Aplicación web profesional para descargar videos y audio de YouTube, Facebook, Kick, Twitch, TikTok y más en máxima calidad.
 
 ## ✨ Características
 
 - ✅ Descarga videos en formato MP4 (hasta 4K)
-- ✅ Descarga audio en formato M4A (AAC alta calidad)
+- ✅ Descarga audio en formato MP3 (compatible con todos los navegadores)
+- ✅ **🆕 Transcripción de audio/video a texto con OpenAI Whisper**
+- ✅ Reproductor integrado para audio y video
 - ✅ Interfaz web moderna y responsive
 - ✅ Notificaciones modales elegantes
 - ✅ Arquitectura limpia y profesional
 - ✅ Sin dependencias de frontend (Vanilla JS)
 - ✅ Detección automática de FFmpeg
+- ✅ Soporte para múltiples plataformas (YouTube, TikTok, Facebook, Kick, Twitch)
+
+## 🎤 Transcripción con Whisper
+
+Convierte cualquier audio o video descargado a texto con un solo clic:
+
+1. Descarga un video o audio
+2. Ve a la sección "Descargas"
+3. Haz clic en el botón 📝 junto al archivo
+4. ¡Automáticamente se genera un archivo `.txt` con la transcripción!
+
+> **Nota**: La primera transcripción descargará el modelo Whisper (~140MB).
 
 ## Arquitectura
 
@@ -29,7 +44,8 @@ src/
 │   └── schemas.py
 ├── services/         # Lógica de negocio
 │   ├── __init__.py
-│   └── downloader.py
+│   ├── downloader.py
+│   └── transcriber.py  # 🆕 Servicio de transcripción
 ├── static/           # Archivos estáticos
 │   ├── css/
 │   │   └── styles.css
@@ -81,9 +97,11 @@ La aplicación se abrirá automáticamente en tu navegador en `http://127.0.0.1:
 ## 🛠️ Tecnologías
 
 - **FastAPI** - Framework web moderno y rápido
-- **yt-dlp** - Descarga de videos de YouTube
+- **yt-dlp** - Descarga de videos de múltiples plataformas
+- **OpenAI Whisper** - Transcripción de audio a texto con IA
 - **Pydantic** - Validación de datos
 - **Uvicorn** - Servidor ASGI
+- **FFmpeg** - Procesamiento de audio y video
 - **HTML/CSS/JS** - Frontend vanilla (sin frameworks)
 
 ## 🏗️ Patrones de Diseño

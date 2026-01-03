@@ -335,6 +335,10 @@ class DownloaderService:
             'preferredcodec': 'mp3',
             'preferredquality': quality,
         }]
+        # Forzar re-codificación para asegurar compatibilidad con navegadores
+        opts['postprocessor_args'] = {
+            'FFmpegExtractAudio': ['-acodec', 'libmp3lame']
+        }
         return opts
     
     def _get_video_options(self, unique_id: str, quality: Optional[int] = None) -> Dict:

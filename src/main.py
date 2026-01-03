@@ -10,6 +10,7 @@ import threading
 import time
 import sys
 import os
+import logging
 from pathlib import Path
 
 # Fix para ejecutar sin consola (windowed mode)
@@ -18,6 +19,17 @@ if sys.stdout is None:
     sys.stdout = open(os.devnull, 'w')
 if sys.stderr is None:
     sys.stderr = open(os.devnull, 'w')
+
+# Suprimir errores de conexión cerrada (común en Windows)
+class ConnectionResetFilter(logging.Filter):
+    def filter(self, record):
+        msg = str(record.getMessage())
+        return 'ConnectionResetError' not in msg and 'WinError 10054' not in msg
+
+# Aplicar filtro a los loggers de asyncio y uvicorn
+for logger_name in ['asyncio', 'uvicorn.error', 'uvicorn.access']:
+    logger = logging.getLogger(logger_name)
+    logger.addFilter(ConnectionResetFilter())
 
 # Agregar el directorio raíz al path
 sys.path.insert(0, str(Path(__file__).parent.parent))

@@ -26,11 +26,11 @@ document.querySelectorAll('.format-btn').forEach(btn => {
         document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active'));
         this.classList.add('active');
         selectedFormat = this.dataset.format;
-        
+
         // Mostrar/ocultar selectores de calidad según el formato
         const videoQualityContainer = document.getElementById('videoQualityContainer');
         const audioQualityContainer = document.getElementById('audioQualityContainer');
-        
+
         if (videoQualityContainer && audioQualityContainer) {
             if (selectedFormat === 'mp4') {
                 videoQualityContainer.style.display = 'flex';
@@ -84,16 +84,78 @@ async function loadDownloads() {
 
     try {
         const response = await fetch('/api/downloads');
-        const files = await response.json();
+        let files = await response.json();
+
+        // Filtrar archivos .part (descargas incompletas)
+        files = files.filter(file => !file.filename.endsWith('.part'));
 
         if (files.length === 0) {
             list.innerHTML = '<div style="text-align:center; padding: 40px; color: #888;">No hay descargas recientes</div>';
             return;
         }
 
+        // Crear un set de transcripciones existentes para verificar
+        const transcriptionFiles = new Set(
+            files
+                .filter(f => f.filename.endsWith('_transcripcion.txt'))
+                .map(f => f.filename.replace('_transcripcion.txt', ''))
+        );
+
         list.innerHTML = files.map(file => {
-            const icon = file.type === 'video' ? 'film' : 'music';
-            const escapedPath = file.path.replace(/\\/g, '\\\\'); // Escape backslashes for JS string
+            const escapedPath = file.path.replace(/\\/g, '\\\\');
+            const isTranscription = file.filename.endsWith('.txt');
+            const isMedia = file.type === 'video' || file.type === 'audio';
+
+            // Determinar ícono
+            let icon = 'file';
+            if (file.type === 'video') icon = 'film';
+            else if (file.type === 'audio') icon = 'music';
+            else if (isTranscription) icon = 'file-text';
+
+            // Verificar si ya existe transcripción para este archivo
+            const baseName = file.filename.replace(/\.[^/.]+$/, ''); // Quitar extensión
+            const hasTranscription = transcriptionFiles.has(baseName);
+
+            // Construir botones según el tipo de archivo
+            let actionsHtml = '';
+
+            if (isTranscription) {
+                // Archivo de texto: solo ver y abrir carpeta
+                actionsHtml = `
+                    <button class="action-btn" title="Ver Transcripción" onclick="viewTranscription('${file.filename}')">
+                        <i data-lucide="eye" style="width: 16px;"></i>
+                    </button>
+                    <button class="action-btn" title="Abrir Ubicación" onclick="openFolder('${escapedPath}')">
+                        <i data-lucide="folder" style="width: 16px;"></i>
+                    </button>
+                `;
+            } else if (isMedia) {
+                // Audio/Video: reproducir, transcribir (o ver transcripción), carpeta
+                const transcribeBtn = hasTranscription
+                    ? `<button class="action-btn" title="Ver Transcripción" onclick="viewTranscription('${baseName}_transcripcion.txt')">
+                           <i data-lucide="eye" style="width: 16px;"></i>
+                       </button>`
+                    : `<button class="action-btn transcribe" title="Transcribir a texto" onclick="transcribeFile('${file.filename}')">
+                           <i data-lucide="file-text" style="width: 16px;"></i>
+                       </button>`;
+
+                actionsHtml = `
+                    <button class="action-btn play" title="Reproducir" onclick="playMedia('${file.filename}', '${file.type}')">
+                        <i data-lucide="play" style="width: 16px;"></i>
+                    </button>
+                    ${transcribeBtn}
+                    <button class="action-btn" title="Abrir Ubicación" onclick="openFolder('${escapedPath}')">
+                        <i data-lucide="folder" style="width: 16px;"></i>
+                    </button>
+                `;
+            } else {
+                // Otro tipo de archivo: solo carpeta
+                actionsHtml = `
+                    <button class="action-btn" title="Abrir Ubicación" onclick="openFolder('${escapedPath}')">
+                        <i data-lucide="folder" style="width: 16px;"></i>
+                    </button>
+                `;
+            }
 
             return `
                 <div class="file-item">
@@ -109,15 +171,10 @@ async function loadDownloads() {
                         </div>
                     </div>
                     <div class="file-actions">
-                        <button class="action-btn play" title="Reproducir" onclick="playMedia('${file.filename}', '${file.type}')">
-                            <i data-lucide="play" style="width: 16px;"></i>
-                        </button>
-                        <button class="action-btn" title="Abrir Ubicación" onclick="openFolder('${escapedPath}')">
-                            <i data-lucide="folder" style="width: 16px;"></i>
-                        </button>
+                        ${actionsHtml}
                     </div>
                 </div>
-                `;
+            `;
         }).join('');
         lucide.createIcons();
     } catch (error) {
@@ -169,6 +226,31 @@ async function openFolder(path) {
     }
 }
 
+async function viewTranscription(filename) {
+    const modal = document.getElementById('mediaPlayerModal');
+    const content = document.getElementById('playerContent');
+    const title = document.getElementById('playerTitle');
+
+    title.textContent = filename;
+    content.innerHTML = '<div class="loading-spinner" style="margin: 40px auto;"></div>';
+    modal.classList.add('show');
+
+    try {
+        const response = await fetch(`/content/${encodeURIComponent(filename)}`);
+        if (!response.ok) throw new Error('No se pudo cargar el archivo');
+
+        const text = await response.text();
+
+        content.innerHTML = `
+            <div style="padding: 20px; max-height: 60vh; overflow-y: auto; text-align: left; white-space: pre-wrap; font-family: system-ui, sans-serif; line-height: 1.6; color: #333;">
+                ${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}
+            </div>
+        `;
+    } catch (error) {
+        content.innerHTML = `<div style="color: red; padding: 40px; text-align: center;">Error: ${error.message}</div>`;
+    }
+}
+
 async function scanVideo() {
     const url = document.getElementById('url').value;
     const scanBtn = document.getElementById('scanBtn');
@@ -195,7 +277,7 @@ async function scanVideo() {
         const startPlaceholder = hasHours ? "00:00:00" : "00:00";
         const timeLabel = hasHours ? "(H:MM:SS)" : "(MM:SS)";
 
-        const thumbnailHtml = data.thumbnail 
+        const thumbnailHtml = data.thumbnail
             ? `<img src="${data.thumbnail}" class="video-thumb" alt="Thumbnail">`
             : `<div class="video-thumb-placeholder"><i data-lucide="image" style="width: 48px; height: 48px; color: #666;"></i></div>`;
 
@@ -203,14 +285,14 @@ async function scanVideo() {
         availableQualities = data.qualities || [];
         selectedQuality = availableQualities.length > 0 ? availableQualities[0].value : null;
         selectedAudioQuality = 192; // Reset al valor por defecto
-        
+
         // Generar opciones de calidad de video
-        const qualityOptionsHtml = availableQualities.map((q, index) => 
+        const qualityOptionsHtml = availableQualities.map((q, index) =>
             `<option value="${q.value}" ${index === 0 ? 'selected' : ''}>${q.label}</option>`
         ).join('');
-        
+
         // Generar opciones de calidad de audio
-        const audioQualityOptionsHtml = audioQualities.map((q) => 
+        const audioQualityOptionsHtml = audioQualities.map((q) =>
             `<option value="${q.value}" ${q.value === 192 ? 'selected' : ''}>${q.label}</option>`
         ).join('');
 
@@ -335,34 +417,34 @@ async function download() {
 
         const { download_id } = await startResponse.json();
         currentDownloadId = download_id; // Guardar para poder cancelar
-        
+
         // Polling para obtener progreso
         let completed = false;
         while (!completed) {
             await new Promise(resolve => setTimeout(resolve, 500)); // Esperar 500ms
-            
+
             const progressResponse = await fetch(`/api/download/progress/${download_id}`);
             const progress = await progressResponse.json();
-            
+
             // Si fue cancelada, salir del loop
             if (progress.status === 'cancelled') {
                 completed = true;
                 currentDownloadId = null;
                 return; // El modal de cancelación ya se mostró
             }
-            
+
             updateProgressModal(progress);
-            
+
             if (progress.status === 'completed') {
                 completed = true;
                 currentDownloadId = null;
-                
+
                 // Descargar el archivo
                 const fileResponse = await fetch(`/api/download/file/${download_id}`);
                 if (!fileResponse.ok) {
                     throw new Error('Error al obtener el archivo');
                 }
-                
+
                 const blob = await fileResponse.blob();
                 const downloadUrl = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -422,13 +504,13 @@ function showProgressModal() {
 
 async function cancelDownload() {
     if (!currentDownloadId) return;
-    
+
     try {
         const response = await fetch(`/api/download/cancel/${currentDownloadId}`, {
             method: 'POST'
         });
         const result = await response.json();
-        
+
         if (result.cancelled) {
             closeModal();
             showModal('error', 'x-circle', 'Descarga Cancelada', 'La descarga ha sido cancelada');
@@ -449,11 +531,11 @@ function updateProgressModal(progress) {
     const percent = Math.round(progress.percent || 0);
     progressFill.style.width = `${percent}%`;
     progressPercent.textContent = `${percent}%`;
-    
+
     if (progress.speed) {
         progressSpeed.textContent = progress.speed;
     }
-    
+
     if (progress.status === 'downloading') {
         const downloaded = progress.downloaded || '';
         const total = progress.total || '';
@@ -494,3 +576,133 @@ function closeModal() {
     const modalOverlay = document.getElementById('modalOverlay');
     modalOverlay.classList.remove('show');
 }
+
+// =====================================================
+// TRANSCRIPTION FUNCTIONS
+// =====================================================
+
+let currentTranscribeId = null;
+
+async function transcribeFile(filename) {
+    showTranscribeProgressModal();
+
+    try {
+        // Iniciar transcripción en segundo plano
+        const startResponse = await fetch('/api/transcribe', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ filename: filename })
+        });
+
+        if (!startResponse.ok) {
+            const error = await startResponse.json();
+            throw new Error(error.detail || 'Error al iniciar transcripción');
+        }
+
+        const { transcribe_id } = await startResponse.json();
+        currentTranscribeId = transcribe_id;
+
+        // Polling para obtener progreso
+        let completed = false;
+        while (!completed) {
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Esperar 1s
+
+            const progressResponse = await fetch(`/api/transcribe/progress/${transcribe_id}`);
+            const progress = await progressResponse.json();
+
+            updateTranscribeProgressModal(progress);
+
+            if (progress.status === 'completed') {
+                completed = true;
+                currentTranscribeId = null;
+
+                // Descargar el archivo de texto
+                const fileResponse = await fetch(`/api/transcribe/file/${transcribe_id}`);
+                if (!fileResponse.ok) {
+                    throw new Error('Error al obtener el archivo de transcripción');
+                }
+
+                const blob = await fileResponse.blob();
+                const downloadUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+
+                const contentDisposition = fileResponse.headers.get('content-disposition');
+                let outputFilename = 'transcripcion.txt';
+                if (contentDisposition) {
+                    const matches = contentDisposition.match(/filename="?(.+)"?/);
+                    if (matches && matches[1]) {
+                        outputFilename = matches[1].replace(/"/g, '');
+                    }
+                }
+
+                a.download = outputFilename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(downloadUrl);
+                a.remove();
+
+                showModal('success', 'check-circle-2', '¡Transcripción Completada!', 'El archivo de texto se ha guardado correctamente');
+
+                // Recargar lista de descargas para mostrar el nuevo archivo .txt
+                loadDownloads();
+
+            } else if (progress.status === 'error') {
+                throw new Error(progress.error || 'Error durante la transcripción');
+            }
+        }
+    } catch (error) {
+        showModal('error', 'x-circle', 'Error', error.message);
+    }
+}
+
+function showTranscribeProgressModal() {
+    const modalOverlay = document.getElementById('modalOverlay');
+    const modalContent = document.getElementById('modalContent');
+
+    modalContent.innerHTML = `
+        <div class="modal-icon" style="color: #4403E8;">
+            <i data-lucide="file-text" style="width: 48px; height: 48px;"></i>
+        </div>
+        <div class="modal-title">Transcribiendo Audio...</div>
+        <div class="progress-container">
+            <div class="progress-bar">
+                <div class="progress-fill" id="transcribeProgressFill" style="width: 0%"></div>
+            </div>
+            <div class="progress-info">
+                <span id="transcribeProgressPercent">0%</span>
+            </div>
+            <div class="progress-details" id="transcribeProgressDetails">Iniciando transcripción...</div>
+        </div>
+    `;
+
+    modalOverlay.classList.add('show');
+    lucide.createIcons();
+}
+
+function updateTranscribeProgressModal(progress) {
+    const progressFill = document.getElementById('transcribeProgressFill');
+    const progressPercent = document.getElementById('transcribeProgressPercent');
+    const progressDetails = document.getElementById('transcribeProgressDetails');
+
+    if (!progressFill) return;
+
+    const percent = Math.round(progress.percent || 0);
+    progressFill.style.width = `${percent}%`;
+    progressPercent.textContent = `${percent}%`;
+
+    if (progress.message) {
+        progressDetails.textContent = progress.message;
+    } else if (progress.status === 'loading_model') {
+        progressDetails.textContent = 'Cargando modelo Whisper...';
+    } else if (progress.status === 'transcribing') {
+        progressDetails.textContent = 'Transcribiendo audio...';
+    } else if (progress.status === 'saving') {
+        progressDetails.textContent = 'Guardando transcripción...';
+    } else if (progress.status === 'starting') {
+        progressDetails.textContent = 'Iniciando transcripción...';
+    }
+}
+
